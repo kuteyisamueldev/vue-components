@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+    <g id="Icon" transform="translate(19.633 20) rotate(180)">
+        <rect id="Area" width="20" height="20" transform="translate(-0.367 0)" fill="#fcfcfc" opacity="0"/>
+        <g id="Icon_ICON_feather_chevron-down_SIZE_MEDIUM_STYLE_STYLE1_" transform="translate(5.738 7.971)">
+            <path id="Path" d="M0,0,5,5l5-5" fill="rgba(0,0,0,0)" stroke="#5094dd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"/>
+        </g>
+    </g>
+</svg>
