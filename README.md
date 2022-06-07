@@ -1,3 +1,6 @@
+####This repository contains custom built vue components including a video player, dropdowns, range sliders and checkboxes.
+It also contains a reusable base stylesheet and icons.
+
 # reusable-components
 
 ## Project setup
