@@ -1,61 +1,75 @@
 <template>
-<div class="video-item" :class="{'loaded': this.mounted}" ref="videoContainer">
-  <video class="video-component" ref="videoItem" width="600" height="450" @play="playVideo" @pause="pauseVideo"  @ended="resetVideo">
-    <source :src="videoLink" type="video/mp4">
-    <source :src="videoLink" type="video/ogg">
+  <div class="video-item" :class="{'loaded': this.mounted}" ref="videoContainer">
+    <video class="video-component" ref="videoItem" width="600" height="450"  @play="playVideo" @pause="pauseVideo" @ended="resetVideo">
+      <source :src="videoLink" type="video/mp4">
+      <source :src="videoLink" type="video/ogg">
 
-    <div>Your browser does not support video.</div>
-  </video>
+      <div>Your browser does not support video.</div>
+    </video>
 
-  <div class="controls">
-    <div class="video-range">
-      <span class="time-data current-time">{{ currentTime }}</span>
-      <range-slider :min="0" :max="videoDuration" :value="watchTime" @onInput="setVideoPosition($event)" @onChange="resumeVideo"></range-slider>
-      <span class="time-data remaining-time">{{ remainingTime }}</span>
-    </div>
+    <div class="controls">
+      <div class="video-range">
+        <span class="time-data current-time">{{ currentTime }}</span>
+        <div class="full-range">
+          <div class="preview-bar" :style="{left: `${previewVideoOffset}px`}" v-if="showPreviewBar">
+            <div class="preview-item">
+              <video class="preview-video" ref="previewVideo">
+                <source :src="videoLink" type="video/mp4">
+                <source :src="videoLink" type="video/ogg">
 
-    <div class="volume-section">
-      <img :src="volumeIcon" class="volume-icon" @click="toggleVolume()"/>
-      <range-slider :min="0" :max="100" :value="volume" @onInput="changeVolume($event)" />
-    </div>
-
-    <div class="skip-section">
-      <img :src="skipBackwardIcon" class="skip-icon skip-reverse right-margin-sm" :class="{'skip-animate-reverse': animateReverse}" @click="skipVideo('backward')">
-      <img :src="skipForwardIcon" class="skip-icon skip-forward" :class="{'skip-animate-forward': animateSkip}" @click="skipVideo('forward')">
-    </div>
-
-    <div class="setting-section">
-      <ul class="settings-list" v-if="showVideoSettings">
-        <li v-for="(setting, index) in videoSettings" :key="index" :class="{'switch-list': setting.type === 'switch'}">
-          <span>{{ setting.name }}</span>
-          <ul class="setting-options" v-if="setting.type === 'list'">
-
-            <li v-for="(option, optionIndex) in setting.options" :key="optionIndex" :data-value="option.value" @click="setOption(index, option.value)">
-             <span> {{ option.label }}</span>
-              <img v-if="setting.value === option.value" :src="checkmarkIcon" class="checkmark-icon">
-            </li>
-          </ul>
-
-          <div v-if="setting.type === 'switch'">
-            <q-toggle v-model="setting.value" color="#5094DD" size="28px"/>
+                <div>Your browser does not support video.</div>
+              </video>
+            </div>
           </div>
-        </li>
-      </ul>
-      <img :src="gearIcon" class="gear-icon" @click="showVideoSettings = !showVideoSettings">
+          <range-slider ref="timeSlider" :min="0" :max="videoDuration" :value="watchTime" @onInput="setVideoPosition($event)" @onChange="resumeVideo" @mousemove="showPreview($event)" @mouseleave="hidePreviewBar"></range-slider>
+        </div>
+        <span class="time-data remaining-time">{{ remainingTime }}</span>
+      </div>
+
+      <div class="volume-section">
+        <img :src="volumeIcon" class="volume-icon" @click="toggleVolume()"/>
+        <range-slider :min="0" :max="100" :value="volume" @onInput="changeVolume($event)" />
+      </div>
+      9KHan7DC!F6e
+      <div class="skip-section">
+        <img :src="skipBackwardIcon" class="skip-icon skip-reverse right-margin-sm" :class="{'skip-animate-reverse': animateReverse}" @click="skipVideo('backward')">
+        <img :src="skipForwardIcon" class="skip-icon skip-forward" :class="{'skip-animate-forward': animateSkip}" @click="skipVideo('forward')">
+      </div>
+
+      <div class="setting-section">
+        <ul class="settings-list" v-if="showVideoSettings">
+          <li v-for="(setting, index) in videoSettings" :key="index" :class="{'switch-list': setting.type === 'switch'}">
+            <span>{{ setting.name }}</span>
+            <ul class="setting-options" v-if="setting.type === 'list'">
+
+              <li v-for="(option, optionIndex) in setting.options" :key="optionIndex" :data-value="option.value" @click="setOption(index, option.value)">
+                <span> {{ option.label }}</span>
+                <img v-if="setting.value === option.value" :src="checkmarkIcon" class="checkmark-icon">
+              </li>
+            </ul>
+
+            <div v-if="setting.type === 'switch'">
+              <q-toggle v-model="setting.value" color="#5094DD" size="28px"/>
+            </div>
+          </li>
+        </ul>
+        <img :src="gearIcon" class="gear-icon" @click="showVideoSettings = !showVideoSettings">
+      </div>
+
+      <div class="fullscreen-section">
+        <img :src="fullScreenIcon" class="fullscreen-icon" @click="inFullscreen = !inFullscreen">
+      </div>
     </div>
 
-    <div class="fullscreen-section">
-      <img :src="fullScreenIcon" class="fullscreen-icon" @click="inFullscreen = !inFullscreen">
+    <div class="play-button" ref="playButton" @click="toggleVideo" v-if="!loadingData">
+      <img v-if="!playing" src="../assets/icons/play.svg">
+      <img v-if="playing" src="../assets/icons/pause.svg">
     </div>
+
+    <div class="loading-spinner" v-if="loadingData"></div>
   </div>
 
-  <div class="play-button" ref="playButton" @click="toggleVideo">
-    <img v-if="!playing" src="../assets/icons/play.svg">
-    <img v-if="playing" src="../assets/icons/pause.svg">
-  </div>
-</div>
-
-<!--  <iframe :src="videoLink"></iframe>-->
+  <!--  <iframe :src="videoLink"></iframe>-->
 
 </template>
 
@@ -71,24 +85,24 @@ export default {
     RangeSlider
   },
   mounted() {
-   setTimeout(() => {
-     this.mounted = true
-     this.setInitialVideoState()
+    setTimeout(() => {
+      this.mounted = true
+      this.setInitialVideoState()
 
-    this.$refs['videoItem'].volume = this.volume / 100;
+      this.$refs['videoItem'].volume = this.volume / 100;
 
       document.addEventListener("keydown" , this.handleKeyPress)
-    document.addEventListener('fullscreenchange', this.handleExit);
+      document.addEventListener('fullscreenchange', this.handleExit);
 
       document.addEventListener("click", this.clickOutsideHandler)
 
 
-   }, 1000)
+    }, 1000)
   },
   unmounted() {
-   // console.log('Unmounted')
+    // console.log('Unmounted')
     document.removeEventListener('fullscreenchange', this.handleExit)
-   document.removeEventListener("keydown", this.handleKeyPress);
+    document.removeEventListener("keydown", this.handleKeyPress);
     document.removeEventListener("click", this.clickOutsideHandler)
   },
   data() {
@@ -145,66 +159,70 @@ export default {
       intervalLength: 1000,
       loopVideo: false,
       inFullscreen: false,
-      savedState: false
+      savedState: false,
+      previewVideoOffset: -60,
+      showPreviewBar: false,
+      loadingData: false
     }
   },
   watch: {
-   volume() {
-     let volumeIcon = this.volume === 0 ? 'speaker-mute' : this.volume > 0 && this.volume <= 50 ? 'speaker-low' : 'speaker';
-     this.volumeIcon = require(`../assets/icons/${volumeIcon}.svg`)
-   },
+    volume() {
+      let volumeIcon = this.volume === 0 ? 'speaker-mute' : this.volume > 0 && this.volume <= 50 ? 'speaker-low' : 'speaker';
+      this.volumeIcon = require(`../assets/icons/${volumeIcon}.svg`)
+    },
 
-   inFullscreen() {
-   // console.log('In full screen:', this.inFullscreen)
-     const container = this.$refs["videoContainer"]
-     if (this.inFullscreen) {
-       this.fullScreenIcon = require('../assets/icons/minimize.svg')
-       if (container.requestFullscreen) {
-         container.requestFullscreen()
-       } else if (container.msRequestFullscreen) {
-         container.msRequestFullscreen()
-       } else if (container.mozRequestFullscreen) {
-         container.mozRequestFullscreen()
-       } else if(container.webkitRequestFullscreen) {
-         container.webkitRequestFullscreen()
-       }
+    inFullscreen() {
+      // console.log('In full screen:', this.inFullscreen)
+      const container = this.$refs["videoContainer"]
+      if (this.inFullscreen) {
+        this.fullScreenIcon = require('../assets/icons/minimize.svg')
+        if (container.requestFullscreen) {
+          container.requestFullscreen()
+        } else if (container.msRequestFullscreen) {
+          container.msRequestFullscreen()
+        } else if (container.mozRequestFullscreen) {
+          container.mozRequestFullscreen()
+        } else if(container.webkitRequestFullscreen) {
+          container.webkitRequestFullscreen()
+        }
 
-     } else {
-       this.fullScreenIcon = require('../assets/icons/expand.svg')
-       if (document.fullscreenElement) {
-         if (document.exitFullscreen) {
-           document.exitFullscreen()
-         } else if (document.msExitFullscreen) {
-           document.msExitFullscreen()
-         } else if (document.webkitExitFullscreen) {
-           document.webkitExitFullscreen()
-         }  else if (container.mozExitFullscreen) {
-           document.mozExitFullscreen()
-         }
-       }
-     }
-   },
+      } else {
+        this.fullScreenIcon = require('../assets/icons/expand.svg')
+        console.log('Exit called')
+        if (document.fullscreenElement) {
+          if (document.exitFullscreen) {
+            document.exitFullscreen()
+          } else if (document.msExitFullscreen) {
+            document.msExitFullscreen()
+          } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen()
+          }  else if (container.mozExitFullscreen) {
+            document.mozExitFullscreen()
+          }
+        }
+      }
+    },
 
 
     videoSettings: {
       deep: true,
       handler() {
-       const playbackSetting = this.videoSettings.find(setting => setting.name.toLowerCase() === 'playback speed');
+        const playbackSetting = this.videoSettings.find(setting => setting.name.toLowerCase() === 'playback speed');
 
-       if (playbackSetting) {
-         if (playbackSetting.value !== this.playbackSpeed) {
-           this.playbackSpeed = playbackSetting.value
-         //  console.log('Playback speed:', playbackSetting.value)
-         }
-       }
+        if (playbackSetting) {
+          if (playbackSetting.value !== this.playbackSpeed) {
+            this.playbackSpeed = playbackSetting.value
+            //  console.log('Playback speed:', playbackSetting.value)
+          }
+        }
 
-       const loopSetting = this.videoSettings.find(setting => setting.name.toLowerCase() === 'loop');
+        const loopSetting = this.videoSettings.find(setting => setting.name.toLowerCase() === 'loop');
 
-       if (loopSetting) {
-         if (loopSetting.value !== this.loopVideo) {
-           this.loopVideo = loopSetting.value
-         }
-       }
+        if (loopSetting) {
+          if (loopSetting.value !== this.loopVideo) {
+            this.loopVideo = loopSetting.value
+          }
+        }
 
 
       }
@@ -218,8 +236,8 @@ export default {
       if (this.watchInterval != null) {
         clearInterval(this.watchInterval)
       }
-     // this.intervalLength = this.playbackSpeed < 1 ? regularInterval + (regularInterval * this.playbackSpeed) : regularInterval * this.playbackSpeed;
-     // this.intervalLength = regularInterval * this.playbackSpeed;
+      // this.intervalLength = this.playbackSpeed < 1 ? regularInterval + (regularInterval * this.playbackSpeed) : regularInterval * this.playbackSpeed;
+      // this.intervalLength = regularInterval * this.playbackSpeed;
 
       let interval = this.playbackSpeed * regularInterval, intervalDifference = interval - regularInterval ;
 
@@ -238,13 +256,15 @@ export default {
       }
     },
     setInitialVideoState() {
-      this.videoDuration = Math.round(this.$refs['videoItem'].duration);
-      this.currentTime = this.splitTime(0)
-      this.remainingTime = this.splitTime(this.videoDuration);
+      if (this.$refs['videoItem']) {
+        this.videoDuration = Math.round(this.$refs['videoItem'].duration);
+        this.currentTime = this.splitTime(0)
+        this.remainingTime = this.splitTime(this.videoDuration);
+      }
     },
 
     handleKeyPress(event) {
-     // console.log('Event code:', event.code)
+      // console.log('Event code:', event.code)
       if (event.code.toLowerCase() === 'arrowright') {
         this.skipVideo('forward')
         this.animateSkip = true
@@ -260,9 +280,9 @@ export default {
       }
 
       if (event.code.toLowerCase() === 'arrowup') {
-         if (this.inFullscreen) {
-           this.increaseVolume()
-         }
+        if (this.inFullscreen) {
+          this.increaseVolume()
+        }
       }
 
       if (event.code.toLowerCase() === 'arrowdown') {
@@ -299,17 +319,17 @@ export default {
 
     toggleVideo() {
       const video = this.$refs['videoItem'],  paused = video.paused;
-/*
-      console.log('Duration:', Math.round(video.duration))
+      /*
+            console.log('Duration:', Math.round(video.duration))
 
-      let seconds = [100, 289, 500, 300, 860, 400, 600, 3600, 80000];
+            let seconds = [100, 289, 500, 300, 860, 400, 600, 3600, 80000];
 
-      seconds.map(second => {
-        console.log(this.splitTime(second))
-      })*/
+            seconds.map(second => {
+              console.log(this.splitTime(second))
+            })*/
 
       if (paused) {
-       this.playVideo()
+        this.playVideo()
       } else {
         this.pauseVideo()
       }
@@ -320,9 +340,9 @@ export default {
 
     playVideo() {
       const video = this.$refs['videoItem'];
-      if (video != null) {
+      if (video != null && !this.loadingData) {
         video.play()
-       this.playing = !video.paused
+        this.playing = !video.paused
 
         this.watchInterval = this.setVideoInterval(video)
       }
@@ -331,7 +351,7 @@ export default {
     pauseVideo() {
       const video = this.$refs['videoItem'];
 
-      if (video != null) {
+      if (video != null && !this.loadingData) {
         video.pause();
         this.playing = !video.paused
 
@@ -342,7 +362,7 @@ export default {
     },
 
     splitTime(seconds) {
-     let breakdown = [];
+      let breakdown = [];
 
       const breakTime = (seconds) => {
         let timeDivision =  Math.floor(seconds / 60);
@@ -360,12 +380,12 @@ export default {
       }
 
 
-     breakTime(seconds)
+      breakTime(seconds)
 
-    breakdown = breakdown.map(item => {
-      const singleItemString = item.toString().length === 1
-      return singleItemString ? `0${item}` : parseInt(item).toString()
-    })
+      breakdown = breakdown.map(item => {
+        const singleItemString = item.toString().length === 1
+        return singleItemString ? `0${item}` : parseInt(item).toString()
+      })
 
       return breakdown.toString().replace(/,/g, ":");
     },
@@ -383,7 +403,7 @@ export default {
     },
 
     setVideoPosition(timeValue) {
-     // console.log('Current position:', this.watchTime)
+      // console.log('Current position:', this.watchTime)
       const video = this.$refs['videoItem'];
       this.watchTime = parseInt(timeValue)
       video.currentTime = this.watchTime;
@@ -405,11 +425,12 @@ export default {
     },
 
     resumeVideo() {
-     // console.log('Video played')
+      // console.log('Video played')
 
       setTimeout(() => {
-          //console.log('Video paused')
-          this.playVideo()
+        //console.log('Video paused')
+        this.playVideo()
+        this.showPreviewBar = false;
 
       }, 2)
     },
@@ -441,7 +462,7 @@ export default {
     },
 
     skipVideo(direction) {
-    //  console.log('Function called')
+      //  console.log('Function called')
       const video = this.$refs['videoItem'];
 
       if (video) {
@@ -481,8 +502,8 @@ export default {
         this.savedState = video.paused
         this.pauseVideo()
 
-      //  console.log('Video paused', video)
-      //  console.log('Video paused triggered')
+        //  console.log('Video paused', video)
+        //  console.log('Video paused triggered')
 
         this.resetInterval();
 
@@ -502,16 +523,58 @@ export default {
 
     resetVideo() {
       clearInterval(this.watchInterval)
-        this.pauseVideo()
-     // console.log('Video ended')
+      this.pauseVideo()
+      // console.log('Video ended')
       if (this.loopVideo) {
         setTimeout(() => {
           this.playVideo()
         }, 1000)
       }
 
-    }
-  }
+    },
+
+    showPreview(event) {
+      if (!this.showPreviewBar) {
+        this.showPreviewBar = true
+      }
+      const video = this.$refs['videoItem'] , duration = Math.round(video.duration);
+      const slider = this.$refs['timeSlider'].$el;
+      let  sliderPosition = slider.getBoundingClientRect();
+      let positionalDifference = Math.floor(event.clientX - sliderPosition.left);
+
+      let timePercentage =  Math.floor((positionalDifference / slider.clientWidth) * 100)
+      let timeStamp = Math.floor((timePercentage / 100) * duration);
+
+      this.previewVideoOffset = positionalDifference - 60;
+
+      let previewVideo = this.$refs['previewVideo'];
+
+      if (previewVideo) {
+        previewVideo.currentTime = timeStamp
+      }
+
+
+    },
+
+    hidePreviewBar() {
+      this.showPreviewBar = false
+    }/*,
+
+    setLoading() {
+      console.log('loading')
+      this.loadingData = true
+    },
+
+    unsetLoading() {
+      console.log('Loading ended')
+      if (this.loadingData) {
+        console.log('Loading ended')
+        this.loadingData = false
+      }
+    }*/
+  },
+
+
 
 
 }
@@ -611,6 +674,44 @@ $whiteFilter: invert(100%) sepia(16%) saturate(8%) hue-rotate(279deg) brightness
       width: calc(80% - 10rem);
 
 
+      .full-range{
+        width: 100%;
+        position: relative;
+
+        .preview-bar{
+          position: absolute;
+          top: -85px;
+          left: 0;
+          width: 140px;
+          height: 85px;
+          background: var(--black);
+
+          .preview-item{
+            width: 100%;
+            height: 100%;
+            position: relative;
+
+            &:before{
+              position: absolute;
+              content: "";
+              top: 100%;
+              left: 50%;
+              transform: translateX(-50%);
+              width: 0;
+              height: 0;
+              border-top: 8px solid var(--black);
+              border-left: 8px solid transparent;
+              border-right: 8px solid transparent;
+            }
+
+            .preview-video{
+              width: 100%;
+              height: 100%;
+            }
+          }
+        }
+      }
+
       .time-data{
         color: var(--white);
         font-size: .7rem;
@@ -666,9 +767,9 @@ $whiteFilter: invert(100%) sepia(16%) saturate(8%) hue-rotate(279deg) brightness
           animation: skipReverse .5s;
         }
 
-       &.skip-animate-forward{
-         animation: skipForward .5s;
-       }
+        &.skip-animate-forward{
+          animation: skipForward .5s;
+        }
 
         @keyframes skipForward {
           0%{
@@ -856,7 +957,7 @@ $whiteFilter: invert(100%) sepia(16%) saturate(8%) hue-rotate(279deg) brightness
           }
 
           .setting-options{
-           right: 100%;
+            right: 100%;
             top: 4px;
             display: none;
 
@@ -904,6 +1005,38 @@ $whiteFilter: invert(100%) sepia(16%) saturate(8%) hue-rotate(279deg) brightness
       justify-content: space-between;
       .volume-section{
         max-width: 100px;
+      }
+    }
+  }
+
+  .loading-spinner{
+    width: 30px;
+    height: 30px;
+    background: transparent;
+    border: 2px solid rgba(255, 255, 255, .45);
+    border-top: 2px solid var(--theme-blue-alt);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: rotate 1s linear infinite;
+
+    @keyframes rotate {
+      0%{
+        transform:  translate(-50%, -50%) rotate(0deg);
+      }
+
+      25%{
+        transform:  translate(-50%, -50%) rotate(180deg);
+      }
+
+      50%{
+        transform:  translate(-50%, -50%) rotate(360deg);
+      }
+
+      100%{
+        transform:  translate(-50%, -50%) rotate(45deg);
       }
     }
   }
