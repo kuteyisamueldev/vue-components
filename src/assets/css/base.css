@@ -7,6 +7,14 @@
     --white: #FFFFFF;
     --black: #000000;
     --border-color: rgba(62, 62, 62, .3);
+    --slider-item-bg: #FFFFFF;
+    --slider-item-text-color: #000000;
+    --slider-item-price-color: #d8804c;
+    --slider-item-button-bg: #24588D;
+    --slider-item-button-color: #FFFFFF;
+    --slider-arrow-colors:#24588D;
+    --slider-dot-bg: rgba(36, 88, 141, .2);
+    --slider-dot-active-bg: rgba(36, 88, 141);
 }
 
 body {
