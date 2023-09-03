@@ -1,114 +1,226 @@
 <template>
-  <div class="video-item" :class="{'loaded': this.mounted}" ref="videoContainer">
-    <video class="video-component" ref="videoItem" width="600" height="450"  @play="playVideo" @pause="pauseVideo" @ended="resetVideo">
-      <source :src="videoLink" type="video/mp4">
-      <source :src="videoLink" type="video/ogg">
+<div class="video-item" ref="videoContainer"  @dblclick="handleDoubleClick($event)">
+  <div class="video-content">
+      <video class="video-component" v-show="(!state.loading && !state.loadError) && !pictureInPictureActivated"
+             ref="videoItem"
+             width="600"
+             height="450"
+             @play="playVideo"
+             @pause="pauseVideo"
+             @ended="resetVideo"
+             @loadeddata="setInitialVideoState"
+             @error="setErrorState()"
+             @waiting="state.buffering = true"
+             @playing="state.buffering = false"
+      >
+          <source :src="videoLink" type="video/mp4">
+          <source :src="videoLink" type="video/ogg">
 
-      <div>Your browser does not support video.</div>
-    </video>
+          <div>Your browser does not support video.</div>
+      </video>
 
-    <div class="controls">
-      <div class="video-range">
-        <span class="time-data current-time">{{ currentTime }}</span>
-        <div class="full-range">
-          <div class="preview-bar" :style="{left: `${previewVideoOffset}px`}" v-if="showPreviewBar">
-            <div class="preview-item">
-              <video class="preview-video" ref="previewVideo">
-                <source :src="videoLink" type="video/mp4">
-                <source :src="videoLink" type="video/ogg">
+      <div :class="['video-cover-image', { 'loaded-image': state.coverImageLoaded }]" v-if="coverImageLink && state.initialLoad">
+          <img alt="Video cover"
+               :src="coverImageLink"
+               v-show="state.coverImageLoaded"
+               @load="state.coverImageLoaded = true"
+          />
+      </div>
 
-                <div>Your browser does not support video.</div>
-              </video>
-            </div>
+      <div :class="['controls', { 'in-view': !state.initialLoad }]" ref="controlBar" v-if="!state.loading && !state.loadError">
+          <div class="video-range">
+              <span class="time-data current-time">{{ currentTime }}</span>
+              <div class="full-range">
+                  <div class="preview-bar" :style="{left: `${previewVideoOffset}px`}" v-if="showPreviewBar">
+                      <div class="preview-item">
+                          <video class="preview-video" ref="previewVideo">
+                              <source :src="videoLink" type="video/mp4">
+                              <source :src="videoLink" type="video/ogg">
+
+                              <div>Your browser does not support video.</div>
+                          </video>
+
+                          <span class="preview-timestamp" v-if="$refs.previewVideo">
+                              {{ splitTime($refs.previewVideo.currentTime) }}
+                          </span>
+                      </div>
+                  </div>
+                  <range-slider
+                          ref="timeSlider"
+                          :min="0"
+                          :max="videoDuration"
+                          :value="watchTime"
+                          @input="setVideoPosition($event)"
+                          @change="resumeVideo"
+                          @mousemove="showPreview($event)"
+                          @mouseleave="hidePreviewBar"/>
+              </div>
+              <span class="time-data remaining-time">{{ remainingTime }}</span>
           </div>
-          <range-slider ref="timeSlider" :min="0" :max="videoDuration" :value="watchTime" @onInput="setVideoPosition($event)" @onChange="resumeVideo" @mousemove="showPreview($event)" @mouseleave="hidePreviewBar"></range-slider>
-        </div>
-        <span class="time-data remaining-time">{{ remainingTime }}</span>
+
+          <div class="volume-section">
+              <button @click="toggleVolume()">
+                  <img alt="Modify video volume"
+                       :src="volumeIcon"
+                       class="volume-icon"/>
+              </button>
+              <range-slider
+                      v-if="inFullscreen"
+                      :min="0"
+                      :max="100"
+                      :value="volume"
+                      @input="changeVolume($event)"
+              />
+          </div>
+          <div class="skip-section">
+              <button  @click="skipVideo('backward')">
+                  <img alt="Skip backward"
+                       :src="skipBackwardIcon"
+                       class="skip-icon skip-reverse"
+                       :class="{'skip-animate-reverse': animateReverse}"
+                  />
+              </button>
+
+              <button @click="skipVideo('forward')">
+                  <img alt="Skip forward"
+                       :src="skipForwardIcon"
+                       class="skip-icon skip-forward"
+                       :class="{'skip-animate-forward': animateSkip}"
+                  />
+              </button>
+
+          </div>
+
+          <div class="setting-section">
+              <ul class="settings-list" v-if="showVideoSettings">
+                  <li v-for="(setting, index) in videoSettings"
+                      :key="index"
+                      :class="{
+                          'switch-list': setting.type === 'switch',
+                          'disabled-setting': setting.disabled
+                      }"
+                      @click="performAction(setting)"
+                  >
+                      <i v-if="setting.action === 'showPictureInPicture'" :class="[`bx ${setting.activated ? 'bx-window-close' : 'bx-window-open'} picture-in-picture`]"></i>
+                      <span>{{ setting.name }}</span>
+                      <ul class="setting-options" v-if="setting.type === 'list'">
+
+                          <li v-for="(option, optionIndex) in setting.options"
+                              :key="optionIndex"
+                              :data-value="option.value"
+                              @click="setOption(index, option.value)">
+                              <span> {{ option.label }}</span>
+                              <img alt="Setting checkmark"
+                                   v-if="setting.value === option.value"
+                                   :src="checkmarkIcon"
+                                   class="checkmark-icon"
+                              >
+                          </li>
+                      </ul>
+
+                      <div v-if="setting.type === 'switch'">
+                          <q-toggle v-model="setting.value"
+                                    color="#5094DD"
+                                    size="28px"
+                                    @update:model-value="getState"
+                          />
+                      </div>
+                  </li>
+              </ul>
+             <button class="setting-trigger" @click="showVideoSettings = !showVideoSettings">
+                  <img alt="video settings" :src="gearIcon" class="gear-icon" >
+             </button>
+          </div>
+
+          <button class="fullscreen-section" v-if="allowFullscreen">
+              <img alt="fullscreen" :src="fullScreenIcon" class="fullscreen-icon" @click="inFullscreen = !inFullscreen">
+          </button>
       </div>
 
-      <div class="volume-section">
-        <img :src="volumeIcon" class="volume-icon" @click="toggleVolume()"/>
-        <range-slider :min="0" :max="100" :value="volume" @onInput="changeVolume($event)" />
+      <button :class="[
+          'play-button',
+          {
+              'loaded' : state.initialLoad || !playing
+          }]"
+              ref="playButton"
+              @click="toggleVideo"
+              v-if="!state.loading && !state.loadError && !state.buffering && !pictureInPictureActivated">
+          <img alt="play video" v-if="!playing" src="../assets/icons/play.svg">
+          <img alt="pause video" v-if="playing" src="../assets/icons/pause.svg">
+      </button>
+
+      <div class="loading-spinner"
+           v-if="(state.loading && !state.loadError) || (state.buffering && !state.loadError)"></div>
+
+      <div class="load-error-section" v-if="!state.loading && state.loadError">
+          <i class="bx bx-error-circle"></i>
+          <div class="load-error-text">An error occurred while loading this video.</div>
       </div>
-      9KHan7DC!F6e
-      <div class="skip-section">
-        <img :src="skipBackwardIcon" class="skip-icon skip-reverse right-margin-sm" :class="{'skip-animate-reverse': animateReverse}" @click="skipVideo('backward')">
-        <img :src="skipForwardIcon" class="skip-icon skip-forward" :class="{'skip-animate-forward': animateSkip}" @click="skipVideo('forward')">
-      </div>
-
-      <div class="setting-section">
-        <ul class="settings-list" v-if="showVideoSettings">
-          <li v-for="(setting, index) in videoSettings" :key="index" :class="{'switch-list': setting.type === 'switch'}">
-            <span>{{ setting.name }}</span>
-            <ul class="setting-options" v-if="setting.type === 'list'">
-
-              <li v-for="(option, optionIndex) in setting.options" :key="optionIndex" :data-value="option.value" @click="setOption(index, option.value)">
-                <span> {{ option.label }}</span>
-                <img v-if="setting.value === option.value" :src="checkmarkIcon" class="checkmark-icon">
-              </li>
-            </ul>
-
-            <div v-if="setting.type === 'switch'">
-              <q-toggle v-model="setting.value" color="#5094DD" size="28px"/>
-            </div>
-          </li>
-        </ul>
-        <img :src="gearIcon" class="gear-icon" @click="showVideoSettings = !showVideoSettings">
-      </div>
-
-      <div class="fullscreen-section">
-        <img :src="fullScreenIcon" class="fullscreen-icon" @click="inFullscreen = !inFullscreen">
-      </div>
-    </div>
-
-    <div class="play-button" ref="playButton" @click="toggleVideo" v-if="!loadingData">
-      <img v-if="!playing" src="../assets/icons/play.svg">
-      <img v-if="playing" src="../assets/icons/pause.svg">
-    </div>
-
-    <div class="loading-spinner" v-if="loadingData"></div>
   </div>
 
-  <!--  <iframe :src="videoLink"></iframe>-->
+    <div :class="['picture-frame', { 'in-view': pictureInPictureActivated }]">
+          <div class="frame-text">Playing in picture-in-picture mode</div>
+          <button @click="requestPictureInPicture">Exit mode</button>
+    </div>
+</div>
+
+<!--  <iframe :src="videoLink"></iframe>-->
 
 </template>
 
 <script>
-import RangeSlider from "@/components/RangeSlider";
+import RangeSlider from "./RangeSlider";
 
 export default {
   name: "VideoPlayer",
   props: {
-    videoLink: String
+    videoLink: {
+        type: String,
+        required: true
+    },
+    allowFullscreen: {
+        type: Boolean,
+        required: false,
+        default: true
+    },
+    coverImageLink: {
+        type: String,
+        required: false
+    },
+    autoPlay: {
+        type: Boolean,
+        required: false,
+        default: false
+    }
   },
   components: {
     RangeSlider
   },
+
   mounted() {
-    setTimeout(() => {
-      this.mounted = true
-      this.setInitialVideoState()
-
-      this.$refs['videoItem'].volume = this.volume / 100;
-
-      document.addEventListener("keydown" , this.handleKeyPress)
-      document.addEventListener('fullscreenchange', this.handleExit);
-
-      document.addEventListener("click", this.clickOutsideHandler)
-
-
-    }, 1000)
+     if (document.pictureInPictureElement) {
+         document.exitPictureInPicture()
+     }
   },
   unmounted() {
-    // console.log('Unmounted')
+   // console.log('Unmounted')
     document.removeEventListener('fullscreenchange', this.handleExit)
-    document.removeEventListener("keydown", this.handleKeyPress);
-    document.removeEventListener("click", this.clickOutsideHandler)
+   document.removeEventListener("keydown", this.handleKeyPress);
+    document.removeEventListener("click", this.clickOutsideHandler);
+    if (this.$refs.videoItem) {
+        this.$refs.videoItem.removeEventListener('enterpictureinpicture', this.detectPictureInPictureEntry, false)
+    }
   },
   data() {
     return {
+      state: {
+          loading: true,
+          loadError: false,
+          initialLoad: true,
+          buffering: false,
+          coverImageLoaded: false
+      },
       playing: false,
-      mounted: false,
       watchTime: 0,
       watchInterval: null,
       videoDuration: 0,
@@ -127,7 +239,10 @@ export default {
       videoSettings: [
         {
           name: "Playback speed",
+          action: 'changePlaybackSpeed',
           type: "list",
+          disabled: false,
+          activated: false,
           options: [
             {
               value: .5,
@@ -150,8 +265,17 @@ export default {
         },
         {
           name: 'Loop',
+          action: 'loopVideo',
           type: 'switch',
-          value: false
+          value: false,
+          disabled: false,
+          activated: false
+        },
+        {
+            name: 'Picture-in-Picture',
+            action: 'showPictureInPicture',
+            disabled: false,
+            activated: false
         }
       ],
       savedVolume: 85,
@@ -160,96 +284,148 @@ export default {
       loopVideo: false,
       inFullscreen: false,
       savedState: false,
-      previewVideoOffset: -60,
+      previewVideoOffset: -70,
       showPreviewBar: false,
-      loadingData: false
+      loadingData: false,
+      pictureInPictureActivated: false,
+      bufferInterval: null
     }
   },
   watch: {
-    volume() {
-      let volumeIcon = this.volume === 0 ? 'speaker-mute' : this.volume > 0 && this.volume <= 50 ? 'speaker-low' : 'speaker';
-      this.volumeIcon = require(`../assets/icons/${volumeIcon}.svg`)
-    },
+   volume() {
+     let volumeIcon = this.volume === 0 ? 'speaker-mute' : this.volume > 0 && this.volume <= 50 ? 'speaker-low' : 'speaker';
+     this.volumeIcon = require(`../assets/icons/${volumeIcon}.svg`)
+   },
 
-    inFullscreen() {
-      // console.log('In full screen:', this.inFullscreen)
-      const container = this.$refs["videoContainer"]
-      if (this.inFullscreen) {
-        this.fullScreenIcon = require('../assets/icons/minimize.svg')
-        if (container.requestFullscreen) {
-          container.requestFullscreen()
-        } else if (container.msRequestFullscreen) {
-          container.msRequestFullscreen()
-        } else if (container.mozRequestFullscreen) {
-          container.mozRequestFullscreen()
-        } else if(container.webkitRequestFullscreen) {
-          container.webkitRequestFullscreen()
-        }
+   inFullscreen() {
+   // console.log('In full screen:', this.inFullscreen)
+     const container = this.$refs["videoContainer"]
+     if (this.inFullscreen) {
+       this.fullScreenIcon = require('../assets/icons/minimize.svg')
+       if (container.requestFullscreen) {
+         container.requestFullscreen()
+       } else if (container.msRequestFullscreen) {
+         container.msRequestFullscreen()
+       } else if (container.mozRequestFullscreen) {
+         container.mozRequestFullscreen()
+       } else if(container.webkitRequestFullscreen) {
+         container.webkitRequestFullscreen()
+       }
 
-      } else {
-        this.fullScreenIcon = require('../assets/icons/expand.svg')
-        console.log('Exit called')
-        if (document.fullscreenElement) {
-          if (document.exitFullscreen) {
-            document.exitFullscreen()
-          } else if (document.msExitFullscreen) {
-            document.msExitFullscreen()
-          } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen()
-          }  else if (container.mozExitFullscreen) {
-            document.mozExitFullscreen()
-          }
-        }
-      }
-    },
-
-
-    videoSettings: {
-      deep: true,
-      handler() {
-        const playbackSetting = this.videoSettings.find(setting => setting.name.toLowerCase() === 'playback speed');
-
-        if (playbackSetting) {
-          if (playbackSetting.value !== this.playbackSpeed) {
-            this.playbackSpeed = playbackSetting.value
-            //  console.log('Playback speed:', playbackSetting.value)
-          }
-        }
-
-        const loopSetting = this.videoSettings.find(setting => setting.name.toLowerCase() === 'loop');
-
-        if (loopSetting) {
-          if (loopSetting.value !== this.loopVideo) {
-            this.loopVideo = loopSetting.value
-          }
-        }
-
-
-      }
-    },
+     } else {
+       this.fullScreenIcon = require('../assets/icons/expand.svg')
+       if (document.fullscreenElement) {
+         if (document.exitFullscreen) {
+           document.exitFullscreen()
+         } else if (document.msExitFullscreen) {
+           document.msExitFullscreen()
+         } else if (document.webkitExitFullscreen) {
+           document.webkitExitFullscreen()
+         }  else if (container.mozExitFullscreen) {
+           document.mozExitFullscreen()
+         }
+       }
+     }
+   },
 
     playbackSpeed() {
       const video = this.$refs.videoItem, regularInterval = 1000;
-
       video.playbackRate = this.playbackSpeed;
 
       if (this.watchInterval != null) {
         clearInterval(this.watchInterval)
       }
-      // this.intervalLength = this.playbackSpeed < 1 ? regularInterval + (regularInterval * this.playbackSpeed) : regularInterval * this.playbackSpeed;
-      // this.intervalLength = regularInterval * this.playbackSpeed;
+     // this.intervalLength = this.playbackSpeed < 1 ? regularInterval + (regularInterval * this.playbackSpeed) : regularInterval * this.playbackSpeed;
+     // this.intervalLength = regularInterval * this.playbackSpeed;
 
       let interval = this.playbackSpeed * regularInterval, intervalDifference = interval - regularInterval ;
-
       this.intervalLength = intervalDifference === 0 ? regularInterval : intervalDifference > 0 ? intervalDifference : regularInterval + interval
 
       this.setVideoInterval(video)
     }
   },
-  /*computed: {
+ /* computed: {
+      bufferLength() {
+          let video = this.$refs.videoItem;
+          let buffered = video.buffered;
+          let timeRanges = []
+          if (video) {
+              for (let i = 0; i < buffered.length; i++) {
+                  timeRanges.push({ start: buffered.start(i), end: buffered.end(i) })
+              }
+          }
 
+
+          return buffered
+      }
   },*/
   methods: {
+    getState(value) {
+        this.loopVideo = value;
+    },
+    performAction(setting) {
+        let { action, disabled, value } = setting;
+
+        if (disabled) {
+            return
+        }
+
+        switch (action) {
+            case 'showPictureInPicture':
+                this.requestPictureInPicture()
+                break
+            case 'changePlaybackSpeed':
+                this.playbackSpeed = value
+                break
+            case 'loopVideo':
+                setting.value = !setting.value;
+                this.loopVideo = setting.value
+                break
+        }
+    },
+
+    requestPictureInPicture() {
+        const video = this.$refs.videoItem;
+
+        if (!video){
+            return
+        }
+
+        if (!document.pictureInPictureElement) {
+            video.requestPictureInPicture()
+        } else {
+            document.exitPictureInPicture()
+        }
+    },
+
+
+    detectPictureInPictureEntry() {
+        this.setActionState('showPictureInPicture', true);
+        this.pictureInPictureActivated = true;
+    },
+
+    detectPictureInPictureExit() {
+        this.setActionState('showPictureInPicture', false);
+        this.pictureInPictureActivated = false;
+    },
+
+    setActionState(action, state) {
+        this.videoSettings = this.videoSettings.map(setting => {
+            if (setting.action && setting.action === action) {
+                setting.activated = state;
+            }
+            return setting
+        })
+    },
+
+    setErrorState() {
+        this.state = {
+            ...this.state,
+            loading: false,
+            loadError: true,
+            initialLoad: false
+        }
+    },
     clickOutsideHandler(event) {
       if (event.target.closest(".setting-section") == null) {
         this.showVideoSettings = false
@@ -257,32 +433,67 @@ export default {
     },
     setInitialVideoState() {
       if (this.$refs['videoItem']) {
+          this.state = {
+              ...this.state,
+              loadError: false,
+              loading: false,
+              initialLoad: true
+          }
+        this.videoDuration = Math.round(this.$refs['videoItem'].duration);
         this.videoDuration = Math.round(this.$refs['videoItem'].duration);
         this.currentTime = this.splitTime(0)
         this.remainingTime = this.splitTime(this.videoDuration);
+
+        this.$refs['videoItem'].volume = this.volume / 100;
+        document.addEventListener("keydown" , this.handleKeyPress)
+        document.addEventListener('fullscreenchange', this.handleExit);
+
+        document.addEventListener("click", this.clickOutsideHandler);
+        this.$refs.videoItem.addEventListener('enterpictureinpicture', this.detectPictureInPictureEntry, false);
+        this.$refs.videoItem.addEventListener('leavepictureinpicture', this.detectPictureInPictureExit, false);
+
+          if (this.autoPlay) {
+              this.playVideo();
+          }
+
+         // console.log({ buffered: this.bufferLength })
+
+          /*this.bufferInterval = setInterval(() => {
+              console.log({ buffered: this.bufferLength })
+          }, 1000)*/
       }
     },
 
-    handleKeyPress(event) {
-      // console.log('Event code:', event.code)
-      if (event.code.toLowerCase() === 'arrowright') {
+    animateVideoSkip(direction) {
+      if (direction === 'forward') {
         this.skipVideo('forward')
         this.animateSkip = true
 
         setTimeout(() => { this.animateSkip = false}, 500)
       }
 
-      if (event.code.toLowerCase() === 'arrowleft') {
+      if (direction === 'backward') {
         this.skipVideo('backward');
 
         this.animateReverse = true
         setTimeout(() => { this.animateReverse = false}, 500)
       }
+    },
+
+    handleKeyPress(event) {
+     // console.log('Event code:', event.code)
+      if (event.code.toLowerCase() === 'arrowright') {
+        this.animateVideoSkip('forward')
+      }
+
+      if (event.code.toLowerCase() === 'arrowleft') {
+        this.animateVideoSkip('backward');
+      }
 
       if (event.code.toLowerCase() === 'arrowup') {
-        if (this.inFullscreen) {
-          this.increaseVolume()
-        }
+         if (this.inFullscreen) {
+           this.increaseVolume()
+         }
       }
 
       if (event.code.toLowerCase() === 'arrowdown') {
@@ -298,10 +509,6 @@ export default {
 
         this.toggleVideo()
       }
-    },
-
-    exitFullscreen() {
-      this.inFullscreen = false
     },
     increaseVolume() {
       if (this.volume !== 100) {
@@ -319,39 +526,48 @@ export default {
 
     toggleVideo() {
       const video = this.$refs['videoItem'],  paused = video.paused;
-      /*
-            console.log('Duration:', Math.round(video.duration))
+/*
+      console.log('Duration:', Math.round(video.duration))
 
-            let seconds = [100, 289, 500, 300, 860, 400, 600, 3600, 80000];
+      let seconds = [100, 289, 500, 300, 860, 400, 600, 3600, 80000];
 
-            seconds.map(second => {
-              console.log(this.splitTime(second))
-            })*/
+      seconds.map(second => {
+        console.log(this.splitTime(second))
+      })*/
 
       if (paused) {
-        this.playVideo()
+       this.playVideo()
       } else {
         this.pauseVideo()
       }
 
 
-      if (this.mounted) { this.mounted = false }
+
+
     },
 
     playVideo() {
       const video = this.$refs['videoItem'];
-      if (video != null && !this.loadingData) {
+      if (video != null) {
         video.play()
         this.playing = !video.paused
 
-        this.watchInterval = this.setVideoInterval(video)
+        this.watchInterval = this.setVideoInterval(video);
+
+        if (this.state.buffering) {
+            this.state.buffering = false;
+        }
+
+          if (this.state.initialLoad) {
+              this.state.initialLoad = false;
+          }
       }
     },
 
     pauseVideo() {
       const video = this.$refs['videoItem'];
 
-      if (video != null && !this.loadingData) {
+      if (video != null) {
         video.pause();
         this.playing = !video.paused
 
@@ -362,7 +578,7 @@ export default {
     },
 
     splitTime(seconds) {
-      let breakdown = [];
+     let breakdown = [];
 
       const breakTime = (seconds) => {
         let timeDivision =  Math.floor(seconds / 60);
@@ -380,12 +596,12 @@ export default {
       }
 
 
-      breakTime(seconds)
+     breakTime(seconds)
 
-      breakdown = breakdown.map(item => {
-        const singleItemString = item.toString().length === 1
-        return singleItemString ? `0${item}` : parseInt(item).toString()
-      })
+    breakdown = breakdown.map(item => {
+      const singleItemString = item.toString().length === 1
+      return singleItemString ? `0${item}` : parseInt(item).toString()
+    })
 
       return breakdown.toString().replace(/,/g, ":");
     },
@@ -403,14 +619,17 @@ export default {
     },
 
     setVideoPosition(timeValue) {
-      // console.log('Current position:', this.watchTime)
       const video = this.$refs['videoItem'];
       this.watchTime = parseInt(timeValue)
       video.currentTime = this.watchTime;
+
+      const previewVideo = this.$refs['previewVideo'];
+      if (previewVideo) {
+          previewVideo.currentTime = this.watchTime;
+      }
+
       this.setTimeValues()
-
       video.pause()
-
       this.resetInterval()
     },
 
@@ -425,14 +644,14 @@ export default {
     },
 
     resumeVideo() {
-      // console.log('Video played')
+     // console.log('Video played')
 
       setTimeout(() => {
-        //console.log('Video paused')
+          //console.log('Video paused')
         this.playVideo()
         this.showPreviewBar = false;
 
-      }, 2)
+      }, 100)
     },
 
     changeVolume(volume) {
@@ -458,11 +677,10 @@ export default {
 
         this.volume = this.savedVolume > 0 ? this.savedVolume : 50
       }
-      console.log('Video muted:', video.muted)
     },
 
     skipVideo(direction) {
-      //  console.log('Function called')
+    //  console.log('Function called')
       const video = this.$refs['videoItem'];
 
       if (video) {
@@ -502,8 +720,8 @@ export default {
         this.savedState = video.paused
         this.pauseVideo()
 
-        //  console.log('Video paused', video)
-        //  console.log('Video paused triggered')
+      //  console.log('Video paused', video)
+      //  console.log('Video paused triggered')
 
         this.resetInterval();
 
@@ -518,13 +736,15 @@ export default {
     },
 
     setOption(index, value) {
-      this.videoSettings[index].value = value
+      this.videoSettings[index].value = value;
+
+      this.performAction(this.videoSettings[index])
     },
 
     resetVideo() {
       clearInterval(this.watchInterval)
-      this.pauseVideo()
-      // console.log('Video ended')
+        this.pauseVideo()
+     // console.log('Video ended')
       if (this.loopVideo) {
         setTimeout(() => {
           this.playVideo()
@@ -537,511 +757,52 @@ export default {
       if (!this.showPreviewBar) {
         this.showPreviewBar = true
       }
-      const video = this.$refs['videoItem'] , duration = Math.round(video.duration);
+      const video = this.$refs['videoItem'] , duration = video.duration;
       const slider = this.$refs['timeSlider'].$el;
-      let  sliderPosition = slider.getBoundingClientRect();
-      let positionalDifference = Math.floor(event.clientX - sliderPosition.left);
+      let  { left, width } = slider.getBoundingClientRect();
+      let positionalDifference = event.clientX - left;
+      let timePercentage = (positionalDifference / width) * 100;
 
-      let timePercentage =  Math.floor((positionalDifference / slider.clientWidth) * 100)
-      let timeStamp = Math.floor((timePercentage / 100) * duration);
-
-      this.previewVideoOffset = positionalDifference - 60;
+        if (timePercentage < 0 || timePercentage > 100) {
+            this.showPreviewBar = false;
+            return
+        }
+      let timeElapsed = (timePercentage / 100) * duration;
+      let timeStamp = Math.floor(timeElapsed);
+      this.previewVideoOffset = positionalDifference - 70;
 
       let previewVideo = this.$refs['previewVideo'];
-
       if (previewVideo) {
-        previewVideo.currentTime = timeStamp
+          previewVideo.currentTime = timeStamp
       }
-
-
     },
 
     hidePreviewBar() {
       this.showPreviewBar = false
-    }/*,
-
-    setLoading() {
-      console.log('loading')
-      this.loadingData = true
     },
 
-    unsetLoading() {
-      console.log('Loading ended')
-      if (this.loadingData) {
-        console.log('Loading ended')
-        this.loadingData = false
+    handleDoubleClick(event) {
+      const controlBarPosition = this.$refs['controlBar'].getBoundingClientRect().top, clickOffset = 50,
+            video = this.$refs['videoItem'], videoPosition = video.getBoundingClientRect().left, videoWidth = video.clientWidth;
+
+      const leftClickPosition = (videoPosition + (videoWidth / 2)) - clickOffset,
+            rightClickPosition = (videoPosition + (videoWidth / 2)) + clickOffset;
+
+      if (event.clientY < controlBarPosition) {
+        if (event.clientX < leftClickPosition) {
+          this.animateVideoSkip('backward');
+        }
+
+        if (event.clientX > rightClickPosition) {
+          this.animateVideoSkip('forward');
+        }
       }
-    }*/
-  },
+    }
 
-
-
-
+  }
 }
 </script>
 
 <style scoped lang="scss">
-
-$whiteFilter: invert(100%) sepia(16%) saturate(8%) hue-rotate(279deg) brightness(114%) contrast(100%);
-
-.video-item{
-  width: 100%;
-
-  height: 450px;
-  margin: 1rem auto;
-  position: relative;
-  transition: ease-in-out .3s;
-  background: rgba(0, 0, 0, .7);
-  .video-component{
-    width: 100%;
-    height: 100%;
-  }
-
-  @media screen and (min-width: 1024px) and (max-width: 1599px) {
-    max-width: 600px;
-  }
-
-  @media screen and (min-width: 1600px) {
-    max-width: 750px;
-  }
-
-  @media screen and (min-width: 750px) and (max-width: 1023px) {
-    max-width: calc(85% - 5rem);
-  }
-
-  @media screen and (max-width: 749px) {
-    max-width: calc(95% - 1.5rem);
-  }
-
-  .play-button{
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -30%);
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background: var(--theme-blue-alt);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    color: var(--white);
-    font-size: 20px;
-    transition: ease-in-out .3s;
-    opacity: 0;
-    &:hover{
-      opacity: .5;
-      background: var(--theme-blue);
-      cursor: pointer;
-      transform: translate(-50%, -50%) scale(1.2);
-    }
-
-    img{
-      width: 20px;
-      height: 20px;
-      filter: $whiteFilter
-    }
-  }
-
-  &:hover, &.loaded{
-    .play-button{
-      opacity: 1;
-      transform: translate(-50%, -50%);
-    }
-  }
-
-
-  .controls{
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    padding: .8rem .4rem;
-    background: rgba(0, 0, 0, .8);
-    display: flex;
-    align-items: center;
-
-    &:hover + .play-button{
-      opacity: 0;
-    }
-
-
-
-    .video-range{
-      display: flex;
-      align-items: center;
-      width: calc(80% - 10rem);
-
-
-      .full-range{
-        width: 100%;
-        position: relative;
-
-        .preview-bar{
-          position: absolute;
-          top: -85px;
-          left: 0;
-          width: 140px;
-          height: 85px;
-          background: var(--black);
-
-          .preview-item{
-            width: 100%;
-            height: 100%;
-            position: relative;
-
-            &:before{
-              position: absolute;
-              content: "";
-              top: 100%;
-              left: 50%;
-              transform: translateX(-50%);
-              width: 0;
-              height: 0;
-              border-top: 8px solid var(--black);
-              border-left: 8px solid transparent;
-              border-right: 8px solid transparent;
-            }
-
-            .preview-video{
-              width: 100%;
-              height: 100%;
-            }
-          }
-        }
-      }
-
-      .time-data{
-        color: var(--white);
-        font-size: .7rem;
-        height: 100%;
-
-        &.current-time{
-          margin-right: .6rem;
-        }
-
-        &.remaining-time{
-          margin-left: .6rem;
-        }
-      }
-    }
-
-    .volume-section{
-      display: flex;
-      align-items: center;
-
-      .volume-icon{
-        width: 15px;
-        height: 15px;
-        filter: $whiteFilter;
-        margin-right: 10px;
-        cursor: pointer;
-        transition: .15s ease;
-
-        &:hover{
-          opacity: .6;
-        }
-      }
-    }
-
-    .skip-section{
-      .skip-icon{
-        width: 20px;
-        height: 20px;
-        filter: $whiteFilter;
-        display: inline-block;
-        vertical-align: middle;
-        transition: ease-in-out .2s;
-        cursor: pointer;
-
-        &.skip-reverse:hover{
-          transform: rotate(-15deg);
-        }
-
-        &.skip-forward:hover{
-          transform: rotate(15deg);
-        }
-
-        &.skip-animate-reverse{
-          animation: skipReverse .5s;
-        }
-
-        &.skip-animate-forward{
-          animation: skipForward .5s;
-        }
-
-        @keyframes skipForward {
-          0%{
-            transform: rotate(0deg);
-          }
-
-          50%{
-            transform: rotate(15deg);
-          }
-
-          100%{
-            transform: rotate(0deg);
-          }
-        }
-
-        @-webkit-keyframes skipForward {
-          0%{
-            transform: rotate(0deg);
-          }
-
-          50%{
-            transform: rotate(15deg);
-          }
-
-          100%{
-            transform: rotate(0deg);
-          }
-        }
-
-        @-moz-keyframes skipForward {
-          0%{
-            transform: rotate(0deg);
-          }
-
-          50%{
-            transform: rotate(15deg);
-          }
-
-          100%{
-            transform: rotate(0deg);
-          }
-        }
-
-        @-o-keyframes skipForward {
-          0%{
-            transform: rotate(0deg);
-          }
-
-          50%{
-            transform: rotate(15deg);
-          }
-
-          100%{
-            transform: rotate(0deg);
-          }
-        }
-
-        @keyframes skipReverse {
-          0%{
-            transform: rotate(0deg);
-          }
-
-          50%{
-            transform: rotate(-15deg);
-          }
-
-          100%{
-            transform: rotate(0deg);
-          }
-        }
-
-        @-webkit-keyframes skipReverse {
-          0%{
-            transform: rotate(0deg);
-          }
-
-          50%{
-            transform: rotate(-15deg);
-          }
-
-          100%{
-            transform: rotate(0deg);
-          }
-        }
-
-        @-moz-keyframes skipReverse {
-          0%{
-            transform: rotate(0deg);
-          }
-
-          50%{
-            transform: rotate(-15deg);
-          }
-
-          100%{
-            transform: rotate(0deg);
-          }
-        }
-
-        @-o-keyframes skipReverse {
-          0%{
-            transform: rotate(0deg);
-          }
-
-          50%{
-            transform: rotate(-15deg);
-          }
-
-          100%{
-            transform: rotate(0deg);
-          }
-        }
-      }
-    }
-
-    .fullscreen-section{
-      .fullscreen-icon{
-        width: 22px;
-        height: 22px;
-        filter: $whiteFilter;
-        cursor: pointer;
-        transition: ease-in-out .2s;
-        display: inline-block;
-        vertical-align: middle;
-
-        &:hover{
-          transform: scale(1.1);
-        }
-      }
-    }
-
-    .setting-section{
-      position: relative;
-      transition: ease-in-out .2s;
-      padding: .2rem .4rem;
-      cursor: pointer;
-
-      &:hover{
-        background: rgba(255, 255, 255, .25);
-      }
-
-      .gear-icon{
-        display: inline-block;
-        vertical-align: middle;
-        width: 16px;
-        height: 16px;
-        filter: $whiteFilter
-      }
-
-      ul{
-        background: var(--black);
-        color: white;
-        padding-left: 0;
-        position: absolute;
-        list-style: none;
-        width: 120px;
-      }
-
-      .settings-list{
-        bottom: 85%;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 99;
-        li{
-          padding: .4rem;
-          line-height: 1.1rem;
-          font-size: .75rem;
-          position: relative;
-          transition: ease-in-out .2s;
-          font-weight: 600;
-
-          &.switch-list{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: .2rem .4rem;
-          }
-
-          &:hover{
-            background: rgba(255, 255, 255, .3);
-
-            .setting-options{
-              display: block;
-            }
-          }
-
-          .setting-options{
-            right: 100%;
-            top: 4px;
-            display: none;
-
-            li{
-              display: flex;
-              align-items: center;
-              justify-content: space-between;
-              color: rgba(255, 255, 255, .85);
-              padding: .4rem .5rem;
-
-              .checkmark-icon{
-                width: 11px;
-                height: 11px;
-                margin-right: .4rem;
-                filter: $whiteFilter;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    @media screen and (max-width: 989px) {
-      flex-wrap: wrap;
-      .video-range{
-        width: 100%;
-        margin-bottom: 1rem;
-      }
-
-      .volume-section{
-        max-width: 150px;
-        margin-right: 1.2rem;
-      }
-
-      .skip-section{
-        margin-right: .8rem;
-      }
-
-      .fullscreen-section{
-        margin-left: auto;
-      }
-    }
-
-    @media screen and (min-width: 990px) {
-      justify-content: space-between;
-      .volume-section{
-        max-width: 100px;
-      }
-    }
-  }
-
-  .loading-spinner{
-    width: 30px;
-    height: 30px;
-    background: transparent;
-    border: 2px solid rgba(255, 255, 255, .45);
-    border-top: 2px solid var(--theme-blue-alt);
-    border-radius: 50%;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    animation: rotate 1s linear infinite;
-
-    @keyframes rotate {
-      0%{
-        transform:  translate(-50%, -50%) rotate(0deg);
-      }
-
-      25%{
-        transform:  translate(-50%, -50%) rotate(180deg);
-      }
-
-      50%{
-        transform:  translate(-50%, -50%) rotate(360deg);
-      }
-
-      100%{
-        transform:  translate(-50%, -50%) rotate(45deg);
-      }
-    }
-  }
-}
-
-
-
+@import "../assets/css/video-player.scss";
 </style>
